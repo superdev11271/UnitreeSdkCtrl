@@ -33,13 +33,19 @@ public:
     int32_t HandleCmdCtl(int32_t command);
     int32_t HandleMove(float vx, float vy, float vyaw);
     int32_t HandleStopMove();
+    int32_t GetCurrentModeCode();
 
     static const char* CmdToString(int32_t command);
+    static const char* ModeCodeToString(int32_t modeCode);
+    static const char* FormToString(const std::string& form);
 
 private:
     static bool IsAiModeName(const std::string& modeName);
     static bool IsSportModeName(const std::string& modeName);
+    static int32_t ModeNameToCode(const std::string& name);
 
+    // MotionSwitcherClient::CheckMode(form, name) — form: "0"=standard, "1"=wheel; name: "ai", "normal", …
+    int32_t CheckCurrentMode(std::string& form, std::string& name);
     int32_t QueryCurrentMode(std::string& modeName);
     int32_t ChangeMotionMode(const std::string& targetMode);
     int32_t SetSpeedLevelIfNeeded(int level);

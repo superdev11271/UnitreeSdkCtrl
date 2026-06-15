@@ -12,6 +12,8 @@
 #include "cmd_ctl_sdk_subscriber.hpp"
 #include "cmd_vel_subscriber.hpp"
 #include "robot_controller.hpp"
+#include "robot_mode_publisher.hpp"
+#include "robot_mode_query_subscriber.hpp"
 
 namespace
 {
@@ -39,8 +41,13 @@ void PrintUsage(const char* program)
               << std::endl;
     std::cout << std::endl;
     std::cout << "Subscribed topics:" << std::endl;
-    std::cout << "  /cmd_vel      -> SportClient::Move()" << std::endl;
-    std::cout << "  /cmd_ctl_sdk  -> robot state/mode commands (std_msgs/Int32)" << std::endl;
+    std::cout << "  /cmd_vel           -> SportClient::Move()" << std::endl;
+    std::cout << "  /cmd_ctl_sdk       -> robot state/mode commands (std_msgs/Int32)" << std::endl;
+    std::cout << "  /robot_mode_query  -> trigger CheckMode, reply on /robot_mode" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Published topics:" << std::endl;
+    std::cout << "  /robot_mode        -> current mode code (1005=ai, 1006=sport, 0=unknown)"
+              << std::endl;
     std::cout << std::endl;
     std::cout << "cmd_ctl_sdk commands:" << std::endl;
     std::cout << "  1000 Damp            1001 BalanceStand   1002 StandDown" << std::endl;
@@ -55,6 +62,9 @@ void PrintUsage(const char* program)
                  "'{linear: {x: 0.5, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' -r 20"
               << std::endl;
     std::cout << "  ros2 topic pub /cmd_ctl_sdk std_msgs/msg/Int32 '{data: 1001}'" << std::endl;
+    std::cout << "  ros2 topic pub /robot_mode_query std_msgs/msg/Int32 '{data: 0}' --once"
+              << std::endl;
+    std::cout << "  ros2 topic echo /robot_mode std_msgs/msg/Int32" << std::endl;
 }
 
 }  // namespace
@@ -110,6 +120,16 @@ int main(int argc, char** argv)
         robotController.HandleCmdCtl(command);
     });
 
+    unitree_sdk_ctrl::RobotModePublisher robotModePublisher("/robot_mode");
+    unitree_sdk_ctrl::RobotModeQuerySubscriber robotModeQuerySubscriber("/robot_mode_query");
+    robotModeQuerySubscriber.InitChannel([&robotController, &robotModePublisher]() {
+        const int32_t modeCode = robotController.GetCurrentModeCode();
+        robotModePublisher.Publish(modeCode);
+        std::cout << "[robot_mode] current mode "
+                  << unitree_sdk_ctrl::RobotController::ModeCodeToString(modeCode) << " ("
+                  << modeCode << ")" << std::endl;
+    });
+
     unitree_sdk_ctrl::CmdVelSubscriber cmdVelSubscriber("/cmd_vel");
     cmdVelSubscriber.InitChannel([&](const geometry_msgs::msg::dds_::Twist_& twist) {
         const float vx = static_cast<float>(twist.linear().x());
@@ -153,8 +173,10 @@ int main(int argc, char** argv)
         std::cout << "[cmd_vel] Move ok" << std::endl;
     });
 
-    std::cout << "[info] listening on " << cmdVelSubscriber.GetChannelName()
-              << " and " << cmdCtlSubscriber.GetChannelName() << std::endl;
+    std::cout << "[info] listening on " << cmdVelSubscriber.GetChannelName() << ", "
+              << cmdCtlSubscriber.GetChannelName() << ", "
+              << robotModeQuerySubscriber.GetChannelName() << std::endl;
+    std::cout << "[info] publishing on " << robotModePublisher.GetChannelName() << std::endl;
     std::cout << "[info] cmd_vel watchdog timeout=" << timeoutMs << " ms" << std::endl;
 
     const auto cmdTimeout = std::chrono::milliseconds(timeoutMs);
@@ -195,6 +217,8 @@ int main(int argc, char** argv)
 
     cmdVelSubscriber.CloseChannel();
     cmdCtlSubscriber.CloseChannel();
+    robotModeQuerySubscriber.CloseChannel();
+    robotModePublisher.CloseChannel();
     std::cout << "[info] shutdown complete" << std::endl;
     return 0;
 }

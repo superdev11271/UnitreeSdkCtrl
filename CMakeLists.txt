@@ -12,6 +12,8 @@ add_executable(unitree_sdk_ctrl
     src/cmd_vel_subscriber.cpp
     src/cmd_ctl_sdk_subscriber.cpp
     src/robot_controller.cpp
+    src/robot_mode_publisher.cpp
+    src/robot_mode_query_subscriber.cpp
     src/int32_.cpp
 )
 target_include_directories(unitree_sdk_ctrl PRIVATE include)

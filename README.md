@@ -11,6 +11,7 @@ ROS2 publisher (rclcpp)          UnitreeSdkCtrl (SDK2)           Real B2 robot
 ────────────────────────         ─────────────────────           ──────────────
 /cmd_vel  ──► rt/cmd_vel  ──►  ChannelSubscriber<Twist>  ──►  SportClient::Move()
 /cmd_ctl_sdk ─► rt/cmd_ctl_sdk ► ChannelSubscriber<Int32> ──►  Sport / MotionSwitcher APIs
+/robot_mode_query ► rt/robot_mode_query ► CheckMode() ──► publish /robot_mode
 ```
 
 ROS2 nodes can publish to these topics when both sides use CycloneDDS on the same domain (`ROS_DOMAIN_ID=0`).
@@ -22,6 +23,7 @@ ROS2 nodes can publish to these topics when both sides use CycloneDDS on the sam
 - Auto-stop on zero velocity or cmd_vel timeout (default 500 ms)
 - Mode change with SDK state check: `CheckMode()` → skip if unchanged → `StandDown` → `SelectMode` → `BalanceStand`
 - Speed level change with dedup; ignored in sport mode (fixed 6.0 m/s)
+- Query current motion mode via `MotionSwitcherClient::CheckMode()` on `/robot_mode_query`, reply on `/robot_mode`
 
 ## Requirements
 
@@ -75,6 +77,48 @@ Without `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, ROS2 may use FastDDS and will n
 |------------|-----------|---------|--------|
 | `/cmd_vel` | `rt/cmd_vel` | `geometry_msgs/msg/Twist` | `Move(linear.x, linear.y, angular.z)` |
 | `/cmd_ctl_sdk` | `rt/cmd_ctl_sdk` | `std_msgs/msg/Int32` | Robot state / mode commands (see below) |
+| `/robot_mode_query` | `rt/robot_mode_query` | `std_msgs/msg/Int32` | Trigger mode query (any value) |
+
+## Published topics
+
+| ROS2 topic | DDS topic | Message | Description |
+|------------|-----------|---------|-------------|
+| `/robot_mode` | `rt/robot_mode` | `std_msgs/msg/Int32` | Current motion mode code (see below) |
+
+### `/robot_mode` state codes
+
+Queried via SDK `MotionSwitcherClient::CheckMode(form, name)`:
+
+| `CheckMode` output | Meaning |
+|--------------------|---------|
+| `form == "0"` | Standard form |
+| `form == "1"` | Wheel mode |
+| `name == "ai"` | AI motion mode |
+| `name == "normal"` / `"normal-w"` | Sport motion mode |
+| `name` empty | No active mode selected |
+
+Published `/robot_mode` codes (from `name`):
+
+| Code | Mode |
+|------|------|
+| `1005` | AI (`name == "ai"`) |
+| `1006` | Sport (`name == "normal"` or `"normal-w"`) |
+| `0` | No active mode / unknown `name` |
+| `< 0` | `CheckMode` SDK error (returned as-is) |
+
+**Query current mode:**
+
+```bash
+# Terminal 1: unitree_sdk_ctrl running
+
+# Terminal 2
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+ros2 topic echo /robot_mode std_msgs/msg/Int32 &
+ros2 topic pub /robot_mode_query std_msgs/msg/Int32 "{data: 0}" --once
+```
+
+Example response: `data: 1005` (AI mode).
 
 ### `/cmd_vel` mapping
 
@@ -170,12 +214,16 @@ UnitreeSdkCtrl/
 │   ├── ros_dds_topic.hpp          # /foo → rt/foo mapping
 │   ├── cmd_vel_subscriber.hpp
 │   ├── cmd_ctl_sdk_subscriber.hpp
+│   ├── robot_mode_publisher.hpp
+│   ├── robot_mode_query_subscriber.hpp
 │   ├── robot_controller.hpp       # cmd_ctl_sdk → SDK dispatch
 │   └── unitree/idl/ros2/Int32_.hpp
 └── src/
     ├── main.cpp
     ├── cmd_vel_subscriber.cpp
     ├── cmd_ctl_sdk_subscriber.cpp
+    ├── robot_mode_publisher.cpp
+    ├── robot_mode_query_subscriber.cpp
     ├── robot_controller.cpp
     └── int32_.cpp                 # CycloneDDS type registration for Int32
 ```

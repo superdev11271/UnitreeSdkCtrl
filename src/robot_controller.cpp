@@ -111,6 +111,75 @@ int32_t RobotController::HandleStopMove()
     return mSportClient.StopMove();
 }
 
+const char* RobotController::ModeCodeToString(int32_t modeCode)
+{
+    switch (modeCode)
+    {
+    case static_cast<int32_t>(CmdCtlSdk::AiMode):
+        return "ai";
+    case static_cast<int32_t>(CmdCtlSdk::SportMode):
+        return "sport";
+    case 0:
+        return "none";
+    default:
+        if (modeCode < 0)
+        {
+            return "check_mode_error";
+        }
+        return "unknown";
+    }
+}
+
+const char* RobotController::FormToString(const std::string& form)
+{
+    if (form == "0")
+    {
+        return "standard";
+    }
+    if (form == "1")
+    {
+        return "wheel";
+    }
+    return form.empty() ? "unknown" : form.c_str();
+}
+
+int32_t RobotController::ModeNameToCode(const std::string& name)
+{
+    if (IsAiModeName(name))
+    {
+        return static_cast<int32_t>(CmdCtlSdk::AiMode);
+    }
+    if (IsSportModeName(name))
+    {
+        return static_cast<int32_t>(CmdCtlSdk::SportMode);
+    }
+    return 0;
+}
+
+int32_t RobotController::CheckCurrentMode(std::string& form, std::string& name)
+{
+    return mMotionSwitcherClient.CheckMode(form, name);
+}
+
+int32_t RobotController::GetCurrentModeCode()
+{
+    std::lock_guard<std::mutex> lock(mMutex);
+
+    std::string form;
+    std::string name;
+    const int32_t ret = CheckCurrentMode(form, name);
+    if (ret != 0)
+    {
+        std::cout << "[robot_mode] CheckMode failed, code=" << ret << std::endl;
+        return ret;
+    }
+
+    std::cout << "[robot_mode] CheckMode form=" << form << " (" << FormToString(form)
+              << ") name=" << (name.empty() ? "(empty)" : name) << std::endl;
+
+    return ModeNameToCode(name);
+}
+
 int32_t RobotController::BalanceStand()
 {
     const int32_t ret = mSportClient.BalanceStand();
@@ -187,14 +256,15 @@ int32_t RobotController::UnlockMotors()
 int32_t RobotController::QueryCurrentMode(std::string& modeName)
 {
     std::string form;
-    const int32_t ret = mMotionSwitcherClient.CheckMode(form, modeName);
+    const int32_t ret = CheckCurrentMode(form, modeName);
     if (ret != 0)
     {
         std::cout << "[cmd_ctl_sdk] CheckMode failed, code=" << ret << std::endl;
         return ret;
     }
 
-    std::cout << "[cmd_ctl_sdk] CheckMode current=" << modeName << std::endl;
+    std::cout << "[cmd_ctl_sdk] CheckMode form=" << form << " (" << FormToString(form)
+              << ") name=" << (modeName.empty() ? "(empty)" : modeName) << std::endl;
     return 0;
 }
 
